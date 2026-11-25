@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holden Beach Daylight &AMP; Twilight Low Tides &AMP; Hourly Weather</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: clamp(12px, 4vw, 24px);
+            background-color: #374151;
+            color: #e5e7eb;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .max-w {
+            max-width: 56rem;
+            margin: 0 auto;
+        }
+
+        .data-credits {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid #64748b;
+            color: #cbd5e1;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .data-credits p {
+            margin: 0 0 6px;
+            font-weight: 600;
+        }
+
+        .data-credits ul {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 20px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .data-credits a {
+            color: #bae6fd;
+        }
+
+        header {
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .refresh-button {
+            margin-top: 12px;
+            padding: 8px 14px;
+            border: 1px solid #94a3b8;
+            border-radius: 9999px;
+            background: #f8fafc;
+            color: #0f172a;
+            font: inherit;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .refresh-button:hover {
+            background: #e2e8f0;
+        }
+
+        .refresh-button:focus-visible {
+            outline: 3px solid #38bdf8;
+            outline-offset: 2px;
+        }
+
+        h1 {
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(1.5rem, 5vw, 1.875rem);
+            font-weight: 700;
+        }
+
+        .subtitle {
+            margin: 8px 0 0;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        #loading {
+            padding: 48px 0;
+            color: #cbd5e1;
+            font-size: 1.125rem;
+            text-align: center;
+        }
+
+        #error {
+            margin-bottom: 24px;
+            padding: 16px;
+            border: 1px solid #fecaca;
+            border-radius: 12px;
+            background-color: #fef2f2;
+            color: #991b1b;
+        }
+
+        #error-message {
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 17.5rem), 1fr));
+            gap: 24px;
+        }
+
+        .card {
+            min-width: 0;
+            padding: 20px;
+            border: 1px solid #f1f5f9;
+            border-radius: 16px;
+            background: #e5e7eb;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .day-title {
+            margin: 0;
+            color: #0f172a;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .day-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .sun-times {
+            display: grid;
+            flex-shrink: 0;
+            gap: 4px;
+            color: #475569;
+            font-size: 0.75rem;
+            line-height: 1.25;
+        }
+
+        .sun-time {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .sun-icon {
+            display: inline-block;
+            flex: 0 0 16px;
+            width: 16px;
+            height: 16px;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: contain;
+        }
+
+        .sunrise-icon {
+            background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFrSURBVDhPtY+9S0JhFMafqaj+AAuigmhuailplvaK/oUoMIocHTMroyjpQ6fEFDEwGoLUiLDIaHFzrbW5oXzP2zmXg1f8CJceeOCc5/zOPe/Fv8kuY5BWkTcrKJIfQxp3L+PHpdlAzfEa0hp3L9rEsAng7CeAmNQadxatY0DLuiiIsAliV9u62rEwW4iaMJJ0gF6NYIPoF2srfY8JIcHsiUauaAejJoIybWPiK4QRimKPDvHg+BgRK1kY48SM3ceYrrWK4Wlzjk+bgLVxNdfE2fcRvIq1F6XRZ2J4tyle4MVGS2bi+LCn7i+1iBJYtDcMJzuYZ3SBJcVd1TKYp1tUTIafnmMwy75qsmQ8E0ZYymBB1/lyDh4qYJauMUUpTFK2g2UmjLC8o+uu6B4+KuOJ8iixH5tccmYFzCneKoY89MJfL2LG3sHbaMmcGTOKdxaDPqryNbkolvr1j8vNomd+SZWvvamlrrS7DPwCn0MMzppdwtgAAAAASUVORK5CYII=");
+        }
+
+        .sunset-icon {
+            background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAGPSURBVDhPlZBNK0RhFMf/KRsLL1tZsLRCSmL4Anay8QUUKVnIwsskNWFoEBvjJeUtdUeTGJkZMxhMM5RCsbHyDay4nnOcuZ4arjsyv/r1vNz/ec7p4i+4G2UZ9TF/VC9mVA98+pg/qh+z4rw+5ocawpwawZ3l8D8eYTeK9NbCdKNdefBOHpiy79DXFvashZrEMU1hTD4W6CuQGxU0gHJ9BPtQSl6c0ST69FUWmkEj+ZDmLhS+TaNOLcJPC4jRIkLiqDxWbHrRRnOI8ARKdNlvpKiTVmDyBphXxTVxC0x+PNISqnTMGQlXqnW886YUSPF32QCrZcR11BnaxDiHvjryts0dUR6hLdTpeJYPA4N0hDsy8MpBCQZyKN8k80IHuKUAGnS5dA6iiqJo5T3Uv+2ilvZR46ghBuVnh9BChyjW5VkojB5K4UrWC4rg/IdRXFICCYqjWsd/Q6cyyQ1aJdzEYbgsY3DRCZqtNZGjsx26lkmeZJKUdE2L99L55o/OdigpkzzLJJlpMj5I56RTZ+AT9wcL9lOSXQIAAAAASUVORK5CYII=");
+        }
+
+        .tide-block {
+            margin-bottom: 16px;
+            padding: 12px;
+            border: 1px solid rgba(186, 230, 253, 0.5);
+            border-radius: 12px;
+            background-color: rgba(224, 242, 254, 0.5);
+        }
+
+        .tide-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .tide-time {
+            color: #0369a1;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .tide-height {
+            flex-shrink: 0;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background: #e0f2fe;
+            color: #0369a1;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .temp-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 2px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(186, 230, 253, 0.4);
+            font-size: 0.75rem;
+            text-align: center;
+        }
+
+        .temp-label {
+            margin: 0;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .no-daylight-tides {
+            margin: 0;
+            padding: 12px;
+            border-radius: 12px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 0.875rem;
+            text-align: center;
+        }
+
+        .temp-val {
+            margin: 2px 0 0;
+            color: #334155;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .wind-val {
+            margin: 2px 0 0;
+            color: #64748b;
+            font-size: 0.6875rem;
+            line-height: 1.3;
+        }
+
+        .precipitation-val {
+            margin: 2px 0 0;
+            color: #64748b;
+            font-size: 0.6875rem;
+            line-height: 1.3;
+        }
+
+        .precipitation-val::before {
+            content: "Precip:\00a0";
+        }
+
+        .peak-box {
+            padding: 4px 1px;
+            border: 1px solid #bae6fd;            
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .peak-box .temp-label {
+            color: #0284c7;
+            font-weight: 700;
+        }
+
+        .peak-box .temp-val {
+            color: #0c4a6e;
+            font-weight: 900;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            clip-path: inset(50%);
+        }
+
+        @media (max-width: 480px) {
+            header {
+                margin-bottom: 24px;
+            }
+
+            h1 {
+                font-size: 1.17rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .card {
+                padding: 16px;
+            }
+
+            .day-heading {
+                gap: 8px;
+            }
+
+            .sun-times {
+                font-size: 0.6875rem;
+            }
+
+            .tide-block {
+                padding: 10px;
+            }
+
+            .temp-grid {
+                gap: 4px;
+            }
+
+            .temp-label {
+                font-size: 0.6875rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="max-w">
+        <header>
+            <h1>Holden Beach Low Tide Dashboard</h1>
+            <p class="subtitle">Daylight &AMP; Twilight Low Tides &AMP; Hourly Weather</p>
+        </header>
+
+        <div id="loading">Fetching latest data...</div>
+        <div id="error" class="hidden">
+            <span id="error-message"></span>
+            <button id="refresh-button" class="refresh-button" type="button">Retry</button>
+        </div>
+        <div id="tide-container" class="grid"></div>
+        <footer id="data-credits" class="data-credits hidden" aria-label="Data sources">
+            <p>Data sources and retrieval times (Eastern Time)</p>
+            <ul>
+                <li><a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener noreferrer">NOAA tides</a> — <time id="tides-fetched">Pending</time></li>
+                <li><a href="https://sunrise-sunset.org/" target="_blank" rel="noopener noreferrer">Sunrise/sunset</a> — <time id="sun-fetched">Pending</time></li>
+                <li><a href="https://www.weather.gov/" target="_blank" rel="noopener noreferrer">National Weather Service</a> — <time id="weather-fetched">Pending</time></li>
+            </ul>
+        </footer>
+    </div>
+
+    <script>
+        const STATION_ID = '8659665';  // Bowen Point at Shallotte Inlet
+        const LAT = '33.92'; // Was '33.9113';
+        const LNG = '-78.27'; // Was '-78.2711';
+        const TWILIGHT_BUFFER_MINUTES = 30; // Buffer time before sunrise and after sunset to consider a tide as "daylight"
+
+        const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        const formatTime = (dateStr) => new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const formatHourLabel = (date, offset) => {
+            const hour = new Date(date.getTime());
+            hour.setHours(hour.getHours() + offset, 0, 0, 0);
+            return formatTime(hour);
+        };
+        const formatSunTime = (dateStr) => new Intl.DateTimeFormat('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: 'America/New_York'
+        }).format(new Date(dateStr));
+        const formatFetchedAt = (date) => new Intl.DateTimeFormat('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+            timeZone: 'America/New_York'
+        }).format(date);
+        const updateDataCredits = (fetchedAt) => {
+            document.getElementById('tides-fetched').textContent = formatFetchedAt(fetchedAt.tides);
+            document.getElementById('sun-fetched').textContent = formatFetchedAt(fetchedAt.sun);
+            document.getElementById('weather-fetched').textContent = formatFetchedAt(fetchedAt.weather);
+        };
+        const getSunMinutes = (dateStr) => {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+                timeZone: 'America/New_York'
+            }).formatToParts(new Date(dateStr));
+            const hour = Number(parts.find(part => part.type === 'hour')?.value);
+            const minute = Number(parts.find(part => part.type === 'minute')?.value);
+            return hour * 60 + minute;
+        };
+        const fetchJsonFromSource = async (url, sourceName, options) => {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`request failed (${response.status})`);
+                }
+                return await response.json();
+            } catch (err) {
+                const detail = err instanceof Error ? err.message : String(err);
+                throw new Error(`${sourceName} service failure: ${detail}`);
+            }
+        };
+
+        async function initDashboard() {
+            try {
+                const now = new Date();
+                const endPeriod = new Date();
+                endPeriod.setDate(now.getDate() + 6);
+
+                // FIXED: Added missing [0] bracket index to correct string parsing array conversion split
+                const formatDateNOAA = (d) => d.toISOString().split('T')[0].replace(/-/g, '');
+                const beginStr = formatDateNOAA(now);
+                const endStr = formatDateNOAA(endPeriod);
+
+                // 1. Fetch Tides
+                const tideUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${beginStr}&end_date=${endStr}&station=${STATION_ID}&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&application=WebpageDashboard&format=json`;
+                const tideData = await fetchJsonFromSource(tideUrl, 'NOAA');
+                const fetchedAt = { tides: new Date() };
+                
+                if (!tideData.predictions) {
+                    throw new Error("NOAA tide data failure: tide predictions could not be parsed.");
+                }
+
+                const tideDates = [...new Set(
+                    tideData.predictions
+                        .map(prediction => prediction.t.slice(0, 10))
+                )];
+                const sunTimesByDate = Object.fromEntries(await Promise.all(
+                    tideDates.map(async date => {
+                        const sunData = await fetchJsonFromSource(
+                            `https://api.sunrise-sunset.org/json?lat=${LAT}&lng=${LNG}&date=${date}&formatted=0`,
+                            'Sunrise/Sunset'
+                        );
+                        if (sunData.status !== 'OK' || !sunData.results?.sunrise || !sunData.results?.sunset) {
+                            throw new Error(`Sunrise/Sunset data failure: data unavailable for ${date}.`);
+                        }
+
+                        return [date, {
+                            sunrise: formatSunTime(sunData.results.sunrise),
+                            sunset: formatSunTime(sunData.results.sunset),
+                            sunriseMinutes: getSunMinutes(sunData.results.sunrise),
+                            sunsetMinutes: getSunMinutes(sunData.results.sunset)
+                        }];
+                    })
+                ));
+                fetchedAt.sun = new Date();
+
+                // 2. Fetch Weather
+                const headers = { 'User-Agent': '(holdenbeachtidedashboard.com, contact@example.com)' };
+                const weatherURL = `https://api.weather.gov/points/${LAT},${LNG}`;
+                const pointsData = await fetchJsonFromSource(weatherURL, 'Weather Service', { headers });
+                if (!pointsData.properties?.forecastHourly) {
+                    throw new Error("Weather Service data failure: hourly forecast URL could not be found.");
+                }
+
+                const weatherData = await fetchJsonFromSource(
+                    pointsData.properties.forecastHourly,
+                    'Weather Service',
+                    { headers }
+                );
+                if (!weatherData.properties?.periods) {
+                    throw new Error("Weather Service data failure: hourly forecast periods could not be parsed.");
+                }
+                fetchedAt.weather = new Date();
+
+                updateDataCredits(fetchedAt);
+                renderDashboard(tideData.predictions, weatherData.properties.periods, sunTimesByDate);
+                document.getElementById('error').classList.add('hidden');
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('data-credits').classList.remove('hidden');
+
+            } catch (err) {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('data-credits').classList.add('hidden');
+                const errDiv = document.getElementById('error');
+                document.getElementById('error-message').textContent = err instanceof Error
+                    ? err.message
+                    : `Service failure: ${String(err)}`;
+                errDiv.classList.remove('hidden');
+                console.error(err);
+            }
+        }
+
+        function renderDashboard(predictions, weather, sunTimesByDate) {
+            const container = document.getElementById('tide-container');
+            container.innerHTML = '';
+            
+            const lowTides = predictions.filter(p => p.type === 'L');
+            const daysMap = {};
+
+            predictions.forEach(tide => {
+                const dateKey = tide.t.slice(0, 10);
+                if (!daysMap[dateKey]) {
+                    daysMap[dateKey] = {
+                        time: new Date(tide.t.replace(/-/g, '/')),
+                        events: []
+                    };
+                }
+            });
+
+            lowTides.forEach(tide => {
+                const tideTime = new Date(tide.t.replace(/-/g, '/')); 
+                const tideTimeMatch = tide.t.match(/(?:T|\s)(\d{2}):(\d{2})/);
+                const sunTimes = sunTimesByDate[tide.t.slice(0, 10)];
+                if (!tideTimeMatch || !sunTimes) return;
+
+                const tideMinutes = Number(tideTimeMatch[1]) * 60 + Number(tideTimeMatch[2]);
+                if (tideMinutes < sunTimes.sunriseMinutes - TWILIGHT_BUFFER_MINUTES || tideMinutes > sunTimes.sunsetMinutes + TWILIGHT_BUFFER_MINUTES) return;
+
+                daysMap[tide.t.slice(0, 10)].events.push({
+                    time: tideTime,
+                    dateKey: tide.t.slice(0, 10),
+                    height: tide.v,
+                    temps: {
+                        before: findHourlyConditions(tideTime, -1, weather),
+                        during: findHourlyConditions(tideTime, 0, weather),
+                        after: findHourlyConditions(tideTime, 1, weather)
+                    }
+                });
+            });
+
+            for (const [dateKey, day] of Object.entries(daysMap)) {
+                const card = document.createElement('div');
+                card.className = "card";
+
+                const sunTimes = sunTimesByDate[dateKey];
+                const sunrise = sunTimes?.sunrise ?? 'Unavailable';
+                const sunset = sunTimes?.sunset ?? 'Unavailable';
+                let cardContent = `<div>
+                    <div class="day-heading">
+                        <h2 class="day-title">${formatDate(day.time)}</h2>
+                        <div class="sun-times" aria-label="Sunrise and sunset">
+                            <span class="sun-time"><span class="sun-icon sunrise-icon" aria-hidden="true"></span><span><span class="visually-hidden">Sunrise: </span>${sunrise}</span></span>
+                            <span class="sun-time"><span class="sun-icon sunset-icon" aria-hidden="true"></span><span><span class="visually-hidden">Sunset: </span>${sunset}</span></span>
+                        </div>
+                    </div>`;
+                if (day.events.length === 0) {
+                    cardContent += `<p class="no-daylight-tides">No daylight or twilight low tides</p>`;
+                }
+                day.events.forEach(ev => {
+                    cardContent += `
+                        <div class="tide-block">
+                            <div class="tide-header">
+                                <span class="tide-time">${formatTime(ev.time)}</span>
+                                <span class="tide-height">Height: ${ev.height} ft</span>
+                            </div>
+                            <div class="temp-grid">
+                                <div>
+                                    <p class="temp-label">${formatHourLabel(ev.time, -1)}</p>
+                                    <p class="temp-val">${ev.temps.before.temperature}</p>
+                                    <p class="wind-val">${ev.temps.before.wind}</p>
+                                    <p class="precipitation-val">${ev.temps.before.precipitation !== null ? `${ev.temps.before.precipitation}%` : '--'}</p>
+                                </div>
+                                <div class="peak-box">
+                                    <p class="temp-label">${formatHourLabel(ev.time, 0)}</p>
+                                    <p class="temp-val">${ev.temps.during.temperature}</p>
+                                    <p class="wind-val">${ev.temps.during.wind}</p>
+                                    <p class="precipitation-val">${ev.temps.during.precipitation !== null ? `${ev.temps.during.precipitation}%` : '--'}</p>
+                                </div>
+                                <div>
+                                    <p class="temp-label">${formatHourLabel(ev.time, 1)}</p>
+                                    <p class="temp-val">${ev.temps.after.temperature}</p>
+                                    <p class="wind-val">${ev.temps.after.wind}</p>
+                                    <p class="precipitation-val">${ev.temps.after.precipitation !== null ? `${ev.temps.after.precipitation}%` : '--'}</p>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                cardContent += `</div>`;
+                card.innerHTML = cardContent;
+                container.appendChild(card);
+            }
+        }
+
+        function findHourlyConditions(tideTime, hourOffset, weatherPeriods) {
+            const targetTime = new Date(tideTime.getTime());
+            targetTime.setHours(targetTime.getHours() + hourOffset);
+
+            const match = weatherPeriods.find(period => {
+                const start = new Date(period.startTime);
+                const end = new Date(period.endTime);               
+                return targetTime >= start && targetTime < end;
+            });
+
+            return {
+                temperature: match ? `${match.temperature}°${match.temperatureUnit}` : '--',
+                wind: match
+                    ? [match.windSpeed, match.windDirection].filter(Boolean).join(' ') || '--'
+                    : '--',
+                precipitation: match ? match.probabilityOfPrecipitation.value : null
+            };
+        }
+
+        document.getElementById('refresh-button').addEventListener('click', () => {
+            window.location.reload();
+        });
+
+        initDashboard();
+    </script>
+</body>
+</html>
