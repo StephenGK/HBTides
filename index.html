@@ -1,8 +1,20 @@
+<!--
+    Holden Beach Low Tide Dashboard
+    Author: Stephen G Keilholz
+    Copyright (c) 2026 Stephen G Keilholz
+
+    Original project code is licensed under the PolyForm Noncommercial License 1.0.0:
+    https://polyformproject.org/licenses/noncommercial/1.0.0.html
+    Commercial use is not permitted. This license does not cover third-party data,
+    images, trademarks, or other materials, which remain subject to their own terms.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Stephen G Keilholz">
+    <link rel="license" href="./LICENSE">
     <title>Holden Beach Daylight &AMP; Twilight Low Tides &AMP; Hourly Weather</title>
     <style>
         *,
@@ -39,16 +51,23 @@
         }
 
         .data-credits ul {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px 20px;
             margin: 0;
             padding: 0;
             list-style: none;
         }
 
+        .data-credits li + li {
+            margin-top: 4px;
+        }
+
         .data-credits a {
             color: #bae6fd;
+        }
+
+        .data-source-notice {
+            border-top: 1px dashed #64748b;
+            margin-top: 8px !important;
+            font-weight: 400 !important;
         }
 
         header {
@@ -171,6 +190,7 @@
             background-size: contain;
         }
 
+        /* Sunrise and sunset icons are embedded as base64-encoded PNGs to avoid external requests. */
         .sunrise-icon {
             background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFrSURBVDhPtY+9S0JhFMafqaj+AAuigmhuailplvaK/oUoMIocHTMroyjpQ6fEFDEwGoLUiLDIaHFzrbW5oXzP2zmXg1f8CJceeOCc5/zOPe/Fv8kuY5BWkTcrKJIfQxp3L+PHpdlAzfEa0hp3L9rEsAng7CeAmNQadxatY0DLuiiIsAliV9u62rEwW4iaMJJ0gF6NYIPoF2srfY8JIcHsiUauaAejJoIybWPiK4QRimKPDvHg+BgRK1kY48SM3ceYrrWK4Wlzjk+bgLVxNdfE2fcRvIq1F6XRZ2J4tyle4MVGS2bi+LCn7i+1iBJYtDcMJzuYZ3SBJcVd1TKYp1tUTIafnmMwy75qsmQ8E0ZYymBB1/lyDh4qYJauMUUpTFK2g2UmjLC8o+uu6B4+KuOJ8iixH5tccmYFzCneKoY89MJfL2LG3sHbaMmcGTOKdxaDPqryNbkolvr1j8vNomd+SZWvvamlrrS7DPwCn0MMzppdwtgAAAAASUVORK5CYII=");
         }
@@ -348,22 +368,32 @@
             <button id="refresh-button" class="refresh-button" type="button">Retry</button>
         </div>
         <div id="tide-container" class="grid"></div>
+        <!-- Keep these links visible with the displayed data; Sunrise-Sunset.org requires attribution. -->
         <footer id="data-credits" class="data-credits hidden" aria-label="Data sources">
-            <p>Data sources and retrieval times (Eastern Time)</p>
+            <p>Data retrieved at <time id="data-retrieved-at"></time> Eastern Time from:</p>
             <ul>
-                <li><a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener noreferrer">NOAA tides</a> — <time id="tides-fetched">Pending</time></li>
-                <li><a href="https://sunrise-sunset.org/" target="_blank" rel="noopener noreferrer">Sunrise/sunset</a> — <time id="sun-fetched">Pending</time></li>
-                <li><a href="https://www.weather.gov/" target="_blank" rel="noopener noreferrer">National Weather Service</a> — <time id="weather-fetched">Pending</time></li>
+                <li><a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener noreferrer">NOAA CO-OPS tide predictions</a></li>
+                <li><a href="https://sunrise-sunset.org/" target="_blank" rel="noopener noreferrer">Sunrise-Sunset.org times</a></li>
+                <li><a href="https://www.weather.gov/" target="_blank" rel="noopener noreferrer">National Weather Service hourly forecast</a></li>
             </ul>
+                </li>
+            <p class="data-source-notice">
+                <a href="https://www.flaticon.com/free-icons/sunrise" title="sunrise icons" target="_blank" rel="noopener noreferrer">Sunrise <span class="sun-icon sunrise-icon" aria-hidden="true"></span></a> and 
+                    <a href="https://www.flaticon.com/free-icons/sunset" title="sunset icons" target="_blank" rel="noopener noreferrer">Sunset <span class="sun-icon sunset-icon" aria-hidden="true"></span></a> icons created by Icon Hubs - Flaticon
+                <br/>
+                Weather information is from the National Weather Service (NWS/NOAA) and is reformatted for display. This is not an official NWS product; no government endorsement is implied.</p>
         </footer>
     </div>
 
     <script>
-        const STATION_ID = '8659665';  // Bowen Point at Shallotte Inlet
-        const LAT = '33.92'; // Was '33.9113';
-        const LNG = '-78.27'; // Was '-78.2711';
+        // Location and station configuration. Adjust the twilight buffer to change the tide inclusion window.
+        const STATION_ID = '8659665';  // Bowen Point NOAA station is slightly north of the east end of Holden Beach at Shallotte Inlet
+        const LAT = '33.9142'; // Represents Holden Beach East End
+        const LNG = '-78.2467';
         const TWILIGHT_BUFFER_MINUTES = 30; // Buffer time before sunrise and after sunset to consider a tide as "daylight"
 
+        // Format timestamps for display in the viewer's locale, except sun times and retrieval labels,
+        // which are explicitly shown in Eastern Time below.
         const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         const formatTime = (dateStr) => new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         const formatHourLabel = (date, offset) => {
@@ -381,10 +411,8 @@
             timeStyle: 'short',
             timeZone: 'America/New_York'
         }).format(date);
-        const updateDataCredits = (fetchedAt) => {
-            document.getElementById('tides-fetched').textContent = formatFetchedAt(fetchedAt.tides);
-            document.getElementById('sun-fetched').textContent = formatFetchedAt(fetchedAt.sun);
-            document.getElementById('weather-fetched').textContent = formatFetchedAt(fetchedAt.weather);
+        const updateDataCredits = (retrievedAt) => {
+            document.getElementById('data-retrieved-at').textContent = formatFetchedAt(retrievedAt);
         };
         const getSunMinutes = (dateStr) => {
             const parts = new Intl.DateTimeFormat('en-US', {
@@ -412,11 +440,12 @@
 
         async function initDashboard() {
             try {
+                // Load a seven-day tide window, then sunrise/sunset and forecast data before rendering.
                 const now = new Date();
                 const endPeriod = new Date();
                 endPeriod.setDate(now.getDate() + 6);
 
-                // FIXED: Added missing [0] bracket index to correct string parsing array conversion split
+                // NOAA expects YYYYMMDD date parameters.
                 const formatDateNOAA = (d) => d.toISOString().split('T')[0].replace(/-/g, '');
                 const beginStr = formatDateNOAA(now);
                 const endStr = formatDateNOAA(endPeriod);
@@ -424,7 +453,6 @@
                 // 1. Fetch Tides
                 const tideUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${beginStr}&end_date=${endStr}&station=${STATION_ID}&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&application=WebpageDashboard&format=json`;
                 const tideData = await fetchJsonFromSource(tideUrl, 'NOAA');
-                const fetchedAt = { tides: new Date() };
                 
                 if (!tideData.predictions) {
                     throw new Error("NOAA tide data failure: tide predictions could not be parsed.");
@@ -434,6 +462,7 @@
                     tideData.predictions
                         .map(prediction => prediction.t.slice(0, 10))
                 )];
+                // Fetch each requested date concurrently; missing solar data prevents an incomplete dashboard.
                 const sunTimesByDate = Object.fromEntries(await Promise.all(
                     tideDates.map(async date => {
                         const sunData = await fetchJsonFromSource(
@@ -452,27 +481,25 @@
                         }];
                     })
                 ));
-                fetchedAt.sun = new Date();
 
                 // 2. Fetch Weather
-                const headers = { 'User-Agent': '(holdenbeachtidedashboard.com, contact@example.com)' };
+                // Although NWS requires an identifying User-Agent, adding onein Javascript is not effective so none are added.
                 const weatherURL = `https://api.weather.gov/points/${LAT},${LNG}`;
-                const pointsData = await fetchJsonFromSource(weatherURL, 'Weather Service', { headers });
+                const pointsData = await fetchJsonFromSource(weatherURL, 'Weather Service' );
                 if (!pointsData.properties?.forecastHourly) {
                     throw new Error("Weather Service data failure: hourly forecast URL could not be found.");
                 }
 
+                // Hourly forecast does not include data for previous hours in the same day so display may not show data for previous hours.
                 const weatherData = await fetchJsonFromSource(
                     pointsData.properties.forecastHourly,
-                    'Weather Service',
-                    { headers }
+                    'Weather Service'
                 );
                 if (!weatherData.properties?.periods) {
                     throw new Error("Weather Service data failure: hourly forecast periods could not be parsed.");
                 }
-                fetchedAt.weather = new Date();
 
-                updateDataCredits(fetchedAt);
+                updateDataCredits(new Date());
                 renderDashboard(tideData.predictions, weatherData.properties.periods, sunTimesByDate);
                 document.getElementById('error').classList.add('hidden');
                 document.getElementById('loading').classList.add('hidden');
@@ -494,6 +521,7 @@
             const container = document.getElementById('tide-container');
             container.innerHTML = '';
             
+            // Group tide events by day, keeping only low tides within the sunrise/sunset window plus twilight buffer.
             const lowTides = predictions.filter(p => p.type === 'L');
             const daysMap = {};
 
@@ -528,6 +556,7 @@
                 });
             });
 
+            // Render each day with its low tide events and associated weather data.
             for (const [dateKey, day] of Object.entries(daysMap)) {
                 const card = document.createElement('div');
                 card.className = "card";
@@ -582,6 +611,7 @@
         }
 
         function findHourlyConditions(tideTime, hourOffset, weatherPeriods) {
+            // Match the tide's neighboring clock hours to the NWS hourly forecast intervals.
             const targetTime = new Date(tideTime.getTime());
             targetTime.setHours(targetTime.getHours() + hourOffset);
 
