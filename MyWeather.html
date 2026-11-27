@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Weather Dashboard</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: clamp(12px, 4vw, 24px);
+            background: #374151;
+            color: #e5e7eb;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .max-w {
+            max-width: 56rem;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(1.5rem, 5vw, 1.875rem);
+        }
+
+        .subtitle {
+            margin: 8px 0 0;
+            color: #cbd5e1;
+        }
+
+        #loading {
+            padding: 48px 0;
+            color: #cbd5e1;
+            text-align: center;
+        }
+
+        #error {
+            margin-bottom: 24px;
+            padding: 16px;
+            border: 1px solid #fecaca;
+            border-radius: 12px;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        #error-message {
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        button {
+            padding: 8px 14px;
+            border: 1px solid #94a3b8;
+            border-radius: 9999px;
+            background: #f8fafc;
+            color: #0f172a;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button:focus-visible {
+            outline: 3px solid #38bdf8;
+            outline-offset: 2px;
+        }
+
+        .forecast {
+            display: grid;
+            gap: 20px;
+        }
+
+        .card {
+            min-width: 0;
+            padding: 20px;
+            border: 1px solid #f1f5f9;
+            border-radius: 16px;
+            background: #e5e7eb;
+            color: #0f172a;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .day-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #cbd5e1;
+        }
+
+        .day-title {
+            margin: 0;
+            font-size: 1.125rem;
+        }
+
+        .sun-times {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px 16px;
+            color: #475569;
+            font-size: 0.75rem;
+        }
+
+        .sun-time {
+            white-space: nowrap;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px 18px;
+            margin-bottom: 4px;
+            color: #475569;
+            font-size: 0.75rem;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .swatch {
+            display: inline-block;
+            width: 18px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .swatch.temperature { background: #ea580c; }
+        .swatch.wind { background: #0369a1; }
+        .swatch.precipitation {
+            height: 10px;
+            background: #7dd3fc;
+        }
+
+        .chart {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        .chart text {
+            fill: #475569;
+            font: 13px system-ui, -apple-system, sans-serif;
+        }
+
+        .chart .axis-title {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chart .grid-line {
+            stroke: #cbd5e1;
+            stroke-width: 1;
+        }
+
+        .chart .axis-line {
+            stroke: #64748b;
+            stroke-width: 1;
+        }
+
+        .credits {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid #64748b;
+            color: #cbd5e1;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .credits a { color: #bae6fd; }
+        .credits p { margin: 0 0 6px; }
+
+        .credit-section + .credit-section {
+            margin-top: 12px;
+        }
+
+        .credit-heading {
+            margin: 0 0 6px;
+            color: #e5e7eb;
+            font-size: 0.875rem;
+        }
+
+        .credits ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .credits li + li {
+            margin-top: 4px;
+        }
+
+        .hidden { display: none; }
+
+        .source-notice {
+            margin-top: 10px !important;
+            padding-top: 8px;
+            border-top: 1px dashed #64748b;
+        }
+
+        @media (max-width: 480px) {
+            header { margin-bottom: 24px; }
+            h1 { font-size: 1.3rem; }
+            .card { padding: 14px 10px; }
+            .day-heading { align-items: flex-start; gap: 8px; }
+            .day-title { font-size: 1rem; }
+            .sun-times {
+                display: grid;
+                gap: 4px;
+                font-size: 0.6875rem;
+            }
+            .chart text { font-size: 12px; }
+            .chart .axis-title { font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="max-w">
+        <header>
+            <h1>My Weather Dashboard</h1>
+            <p class="subtitle">2551 Bellamy Dr SW, Supply, NC · 7-day hourly forecast</p>
+        </header>
+
+        <div id="loading" role="status">Fetching the latest forecast...</div>
+        <div id="error" class="hidden" role="alert">
+            <span id="error-message"></span>
+            <button id="refresh-button" type="button">Retry</button>
+        </div>
+        <section id="forecast" class="forecast" aria-label="Seven-day weather forecast"></section>
+
+        <footer id="credits" class="credits hidden">
+            <section class="credit-section" aria-labelledby="retrieval-heading">
+                <h2 id="retrieval-heading" class="credit-heading">Data retrieval</h2>
+                <p>Data retrieved at <time id="retrieved-at"></time> Eastern Time.</p>
+            </section>
+            <section class="credit-section" aria-labelledby="sources-heading">
+                <h2 id="sources-heading" class="credit-heading">Data sources</h2>
+                <ul>
+                    <li>
+                        <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo forecast API</a>
+                        — hourly weather and sunrise/sunset times.
+                    </li>
+                    <li>
+                        <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Open-Meteo terms</a>
+                        — data and attribution information.
+                    </li>
+                </ul>
+                <p class="source-notice">
+                    Weather information is reformatted for display and is not an official government forecast.
+                </p>
+            </section>
+        </footer>
+    </main>
+
+    <script>
+        const LATITUDE = 33.9233;
+        const LONGITUDE = -78.3070;
+        const TIME_ZONE = 'America/New_York';
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+
+        async function fetchForecast() {
+            const params = new URLSearchParams({
+                latitude: LATITUDE,
+                longitude: LONGITUDE,
+                hourly: 'temperature_2m,wind_speed_10m,precipitation_probability',
+                daily: 'sunrise,sunset',
+                temperature_unit: 'fahrenheit',
+                wind_speed_unit: 'mph',
+                timezone: TIME_ZONE,
+                forecast_days: '7'
+            });
+
+            let response;
+            try {
+                response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+            } catch (error) {
+                throw new Error(`Open-Meteo request failed: ${error.message || String(error)}`);
+            }
+
+            if (!response.ok) {
+                throw new Error(`Open-Meteo request failed (${response.status}).`);
+            }
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error('Open-Meteo returned a response that could not be read.');
+            }
+
+            if (data.error) {
+                throw new Error(`Open-Meteo forecast error: ${data.reason || 'data unavailable'}.`);
+            }
+
+            const daily = data.daily;
+            const hourly = data.hourly;
+            if (!Array.isArray(daily?.time) || daily.time.length !== 7
+                || !Array.isArray(daily.sunrise) || daily.sunrise.length !== 7
+                || !Array.isArray(daily.sunset) || daily.sunset.length !== 7
+                || !Array.isArray(hourly?.time)
+                || !Array.isArray(hourly.temperature_2m)
+                || !Array.isArray(hourly.wind_speed_10m)
+                || !Array.isArray(hourly.precipitation_probability)
+                || hourly.temperature_2m.length !== hourly.time.length
+                || hourly.wind_speed_10m.length !== hourly.time.length
+                || hourly.precipitation_probability.length !== hourly.time.length) {
+                throw new Error('Open-Meteo data failure: the seven-day forecast could not be parsed.');
+            }
+
+            return data;
+        }
+
+        function formatDate(date) {
+            return new Intl.DateTimeFormat('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric',
+                timeZone: TIME_ZONE
+            }).format(new Date(`${date}T12:00:00Z`));
+        }
+
+        function formatClock(dateTime) {
+            const clock = dateTime?.split('T')[1];
+            if (!clock) return 'Unavailable';
+
+            const [hour, minute] = clock.split(':').map(Number);
+            if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 'Unavailable';
+
+            return new Intl.DateTimeFormat('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZone: 'UTC'
+            }).format(new Date(Date.UTC(2020, 0, 1, hour, minute)));
+        }
+
+        function svgElement(name, attributes = {}, text = '') {
+            const element = document.createElementNS(SVG_NS, name);
+            Object.entries(attributes).forEach(([key, value]) => {
+                element.setAttribute(key, value);
+            });
+            if (text) element.textContent = text;
+            return element;
+        }
+
+        function finiteValues(values) {
+            return values.filter(Number.isFinite);
+        }
+
+        function linePath(values, xFor, yFor) {
+            let path = '';
+            let continuing = false;
+
+            values.forEach((value, index) => {
+                if (!Number.isFinite(value)) {
+                    continuing = false;
+                    return;
+                }
+                path += `${continuing ? ' L' : ' M'} ${xFor(index).toFixed(2)} ${yFor(value).toFixed(2)}`;
+                continuing = true;
+            });
+
+            return path;
+        }
+
+        function makeChart(day) {
+            const width = 1000;
+            const height = 300;
+            const left = 74;
+            const right = 68;
+            const top = 24;
+            const bottom = 48;
+            const plotWidth = width - left - right;
+            const plotHeight = height - top - bottom;
+            const count = day.hours.length;
+
+            const temperatures = finiteValues(day.hours.map(hour => hour.temperature));
+            const winds = finiteValues(day.hours.map(hour => hour.wind));
+
+            let temperatureMin = temperatures.length
+                ? Math.floor(Math.min(...temperatures) / 5) * 5 : 0;
+            let temperatureMax = temperatures.length
+                ? Math.ceil(Math.max(...temperatures) / 5) * 5 : 10;
+            if (temperatureMin === temperatureMax) {
+                temperatureMin -= 5;
+                temperatureMax += 5;
+            }
+
+            const windMax = Math.max(5, Math.ceil(
+                (winds.length ? Math.max(...winds) : 5) / 5
+            ) * 5);
+
+            const xFor = index => left + index / Math.max(1, count - 1) * plotWidth;
+            const yForTemperature = value =>
+                top + (temperatureMax - value) / (temperatureMax - temperatureMin) * plotHeight;
+            const yForWind = value => top + (windMax - value) / windMax * plotHeight;
+
+            const chart = svgElement('svg', {
+                class: 'chart',
+                viewBox: `0 0 ${width} ${height}`,
+                role: 'img',
+                'aria-labelledby': `${day.date}-chart-title ${day.date}-chart-description`
+            });
+
+            chart.append(
+                svgElement('title', { id: `${day.date}-chart-title` },
+                    `${formatDate(day.date)} hourly weather`),
+                svgElement('desc', { id: `${day.date}-chart-description` },
+                    'Orange line: temperature in Fahrenheit, left axis. Blue line: wind speed in miles per hour, right axis. Blue bars: precipitation probability.')
+            );
+
+            for (let tick = 0; tick <= 4; tick++) {
+                const fraction = tick / 4;
+                const y = top + fraction * plotHeight;
+                const temperature = Math.round(
+                    temperatureMax - fraction * (temperatureMax - temperatureMin)
+                );
+                const wind = Math.round(windMax - fraction * windMax);
+
+                chart.append(
+                    svgElement('line', {
+                        class: 'grid-line',
+                        x1: left, y1: y, x2: width - right, y2: y
+                    }),
+                    svgElement('text', {
+                        x: left - 10, y: y + 4, 'text-anchor': 'end'
+                    }, `${temperature}°`),
+                    svgElement('text', {
+                        x: width - right + 10, y: y + 4, 'text-anchor': 'start'
+                    }, `${wind}`)
+                );
+            }
+
+            // Draw precipitation first so the temperature and wind lines remain visible above it.
+            const barWidth = Math.max(1, plotWidth / count * 0.58);
+            day.hours.forEach((hour, index) => {
+                if (!Number.isFinite(hour.precipitation)) return;
+                const chance = Math.max(0, Math.min(100, hour.precipitation));
+                const barHeight = chance / 100 * plotHeight;
+
+                chart.appendChild(svgElement('rect', {
+                    x: xFor(index) - barWidth / 2,
+                    y: top + plotHeight - barHeight,
+                    width: barWidth,
+                    height: barHeight,
+                    fill: '#7dd3fc',
+                    opacity: '0.55'
+                }));
+            });
+
+            chart.append(
+                svgElement('line', {
+                    class: 'axis-line',
+                    x1: left, y1: top, x2: left, y2: top + plotHeight
+                }),
+                svgElement('line', {
+                    class: 'axis-line',
+                    x1: width - right, y1: top, x2: width - right, y2: top + plotHeight
+                }),
+                svgElement('text', {
+                    class: 'axis-title',
+                    x: 14,
+                    y: top + plotHeight / 2,
+                    transform: `rotate(-90 14 ${top + plotHeight / 2})`,
+                    'text-anchor': 'middle'
+                }, 'Temperature (°F)'),
+                svgElement('text', {
+                    class: 'axis-title',
+                    x: width - 12,
+                    y: top + plotHeight / 2,
+                    transform: `rotate(90 ${width - 12} ${top + plotHeight / 2})`,
+                    'text-anchor': 'middle'
+                }, 'Wind (mph)')
+            );
+
+            [...new Set([0, 6, 12, 18, count - 1])].forEach(index => {
+                if (!day.hours[index]) return;
+                chart.appendChild(svgElement('text', {
+                    x: xFor(index),
+                    y: height - 14,
+                    'text-anchor': index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle'
+                }, formatClock(day.hours[index].time)));
+            });
+
+            chart.append(
+                svgElement('path', {
+                    d: linePath(day.hours.map(hour => hour.temperature), xFor, yForTemperature),
+                    fill: 'none',
+                    stroke: '#ea580c',
+                    'stroke-width': '3',
+                    'stroke-linecap': 'round',
+                    'stroke-linejoin': 'round'
+                }),
+                svgElement('path', {
+                    d: linePath(day.hours.map(hour => hour.wind), xFor, yForWind),
+                    fill: 'none',
+                    stroke: '#0369a1',
+                    'stroke-width': '3',
+                    'stroke-linecap': 'round',
+                    'stroke-linejoin': 'round'
+                })
+            );
+
+            return chart;
+        }
+
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.add('hidden');
+        }
+
+        function showCredits() {
+            document.getElementById('retrieved-at').textContent =
+                new Intl.DateTimeFormat('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                    timeZone: TIME_ZONE
+                }).format(new Date());
+
+            document.getElementById('credits').classList.remove('hidden');
+        }
+
+        function hideCredits() {
+            document.getElementById('credits').classList.add('hidden');
+        }
+
+        async function updateForecast() {
+            hideError();
+            hideCredits();
+            document.getElementById('loading').classList.remove('hidden');
+
+            const forecast = document.getElementById('forecast');
+            forecast.replaceChildren();
+
+            try {
+                const data = await fetchForecast();
+                const days = Object.fromEntries(data.daily.time.map((date, index) => [
+                    date,
+                    {
+                        date,
+                        sunrise: data.daily.sunrise[index],
+                        sunset: data.daily.sunset[index],
+                        hours: []
+                    }
+                ]));
+
+                data.hourly.time.forEach((time, index) => {
+                    const day = days[time.slice(0, 10)];
+                    if (!day) return;
+
+                    day.hours.push({
+                        time,
+                        temperature: data.hourly.temperature_2m[index],
+                        wind: data.hourly.wind_speed_10m[index],
+                        precipitation: data.hourly.precipitation_probability[index]
+                    });
+                });
+
+                if (data.daily.time.some(date => days[date].hours.length === 0)) {
+                    throw new Error('Open-Meteo data failure: hourly data is missing for one or more days.');
+                }
+
+                data.daily.time.forEach(date => {
+                    const day = days[date];
+                    const card = document.createElement('article');
+                    card.className = 'card';
+
+                    const heading = document.createElement('div');
+                    heading.className = 'day-heading';
+
+                    const title = document.createElement('h2');
+                    title.className = 'day-title';
+                    title.textContent = formatDate(day.date);
+
+                    const sunTimes = document.createElement('div');
+                    sunTimes.className = 'sun-times';
+                    sunTimes.setAttribute('aria-label', 'Sunrise and sunset');
+                    sunTimes.innerHTML = `
+                        <span class="sun-time"><span aria-hidden="true">🌅</span>
+                            Sunrise: ${formatClock(day.sunrise)}</span>
+                        <span class="sun-time"><span aria-hidden="true">🌇</span>
+                            Sunset: ${formatClock(day.sunset)}</span>
+                    `;
+
+                    heading.append(title, sunTimes);
+
+                    const legend = document.createElement('div');
+                    legend.className = 'chart-legend';
+
+                    [
+                        ['temperature', 'Temperature (°F) · left axis'],
+                        ['wind', 'Wind speed (mph) · right axis'],
+                        ['precipitation', 'Precipitation probability']
+                    ].forEach(([kind, label]) => {
+                        const item = document.createElement('span');
+                        item.className = 'legend-item';
+
+                        const swatch = document.createElement('span');
+                        swatch.className = `swatch ${kind}`;
+                        swatch.setAttribute('aria-hidden', 'true');
+
+                        item.append(swatch, document.createTextNode(label));
+                        legend.appendChild(item);
+                    });
+
+                    card.append(heading, legend, makeChart(day));
+                    forecast.appendChild(card);
+                });
+
+                document.getElementById('loading').classList.add('hidden');
+                showCredits();
+            } catch (error) {
+                document.getElementById('loading').classList.add('hidden');
+                showError(error instanceof Error ? error.message : String(error));
+                console.error(error);
+            }
+        }
+
+        document.getElementById('refresh-button').addEventListener('click', () => {
+            hideError();
+            updateForecast();
+        });
+
+        updateForecast();
+    </script>
+</body>
+</html>
