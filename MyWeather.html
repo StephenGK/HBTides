@@ -652,6 +652,10 @@
                 }
             }
 
+            const twilightBufferMinutes = 30;
+            const daytimeStart = Math.max(0, sunriseMinute - twilightBufferMinutes);
+            const daytimeEnd = Math.min(1440, sunsetMinute + twilightBufferMinutes);
+
             const daylightTemperatures = day.hours
                 .map((hour, index) => ({
                     index,
@@ -661,8 +665,8 @@
                 .filter(point =>
                     Number.isFinite(point.temperature)
                     && Number.isFinite(point.time)
-                    && point.time >= sunriseMinute
-                    && point.time <= sunsetMinute
+                    && point.time >= daytimeStart
+                    && point.time <= daytimeEnd
                 );
 
             if (daylightTemperatures.length) {
