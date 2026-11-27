@@ -429,20 +429,29 @@
         const SVG_NS = 'http://www.w3.org/2000/svg';
 
         const LOCATION_STORAGE_KEY = 'my-weather-locations-v1';
-        const DEFAULT_LOCATION = {
+        const CURRENT_LOCATION_ID = 'current-location';
+        const CURRENT_LOCATION_NAME = 'Current Location';
+
+        const LEGACY_DEFAULT_LOCATION = {
             id: 'default-supply',
             name: '2551 Bellamy Dr SW, Supply, NC',
             latitude: 33.9233,
             longitude: -78.3070
         };
 
+        let currentLocation = {
+            id: CURRENT_LOCATION_ID,
+            name: CURRENT_LOCATION_NAME,
+            latitude: null,
+            longitude: null
+        };
         let locationState = null;
         let selectedLocation = null;
         let forecastRequestId = 0;
 
         async function fetchForecast(location) {
-            if (!location) {
-                throw new Error('Select or add a location to view its forecast.');
+            if (!hasCoordinates(location)) {
+                throw new Error('The selected location does not have valid coordinates.');
             }
             const params = new URLSearchParams({
                 latitude: location.latitude,
@@ -1000,6 +1009,7 @@
             const ids = new Set();
             const locations = value.locations.map(location => {
                 if (!location || typeof location.id !== 'string' || !location.id
+                    || location.id === CURRENT_LOCATION_ID
                     || typeof location.name !== 'string' || !location.name.trim()
                     || !Number.isFinite(location.latitude)
                     || location.latitude < -90 || location.latitude > 90
@@ -1018,7 +1028,9 @@
                 };
             });
 
-            if (value.selectedId !== null && !ids.has(value.selectedId)) {
+            if (value.selectedId !== null
+                && value.selectedId !== CURRENT_LOCATION_ID
+                && !ids.has(value.selectedId)) {
                 throw new Error('The saved selected location does not exist.');
             }
 
@@ -1029,8 +1041,8 @@
             const saved = localStorage.getItem(LOCATION_STORAGE_KEY);
             if (saved === null) {
                 const initial = {
-                    locations: [{ ...DEFAULT_LOCATION }],
-                    selectedId: DEFAULT_LOCATION.id
+                    locations: [],
+                    selectedId: CURRENT_LOCATION_ID
                 };
                 localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(initial));
                 return initial;
@@ -1043,16 +1055,34 @@
                 throw new Error('Saved locations could not be read from local storage.');
             }
 
-            return validateLocationState(parsed);
+            const state = validateLocationState(parsed);
+            const legacyDefault = state.locations.find(location =>
+                location.id === LEGACY_DEFAULT_LOCATION.id
+                && location.name === LEGACY_DEFAULT_LOCATION.name
+                && location.latitude === LEGACY_DEFAULT_LOCATION.latitude
+                && location.longitude === LEGACY_DEFAULT_LOCATION.longitude
+            );
+
+            if (!legacyDefault) return state;
+
+            const migrated = {
+                locations: state.locations.filter(location => location.id !== legacyDefault.id),
+                selectedId: state.selectedId === legacyDefault.id
+                    ? CURRENT_LOCATION_ID
+                    : state.selectedId
+            };
+            const validated = validateLocationState(migrated);
+            localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(validated));
+            return validated;
         }
 
         function persistLocationState(nextState) {
             const validated = validateLocationState(nextState);
             localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(validated));
             locationState = validated;
-            selectedLocation = validated.locations.find(
-                location => location.id === validated.selectedId
-            ) || null;
+            selectedLocation = validated.selectedId === CURRENT_LOCATION_ID
+                ? currentLocation
+                : validated.locations.find(location => location.id === validated.selectedId) || null;
 
             document.getElementById('subtitle-location').textContent =
                 selectedLocation?.name || 'Add or select a location';
@@ -1078,7 +1108,7 @@
             if (open && locationState) {
                 renderLocationList();
             }
-            if (!open && !selectedLocation) {
+            if (!open && (!selectedLocation || !hasCoordinates(selectedLocation))) {
                 open = true;
             }
 
@@ -1094,6 +1124,25 @@
             document.getElementById('location-save').textContent = 'Add location';
         }
 
+        async function selectCurrentLocation() {
+            clearLocationError();
+
+            try {
+                if (!hasCoordinates(currentLocation)) {
+                    currentLocation = await requestCurrentLocation();
+                }
+
+                persistLocationState({
+                    ...locationState,
+                    selectedId: CURRENT_LOCATION_ID
+                });
+                setLocationManagerOpen(false);
+                updateForecast();
+            } catch (error) {
+                showLocationError(error);
+            }
+        }
+
         function renderLocationList() {
             const list = document.getElementById('location-list');
             const empty = document.getElementById('location-empty');
@@ -1101,6 +1150,24 @@
 
             const locations = locationState?.locations || [];
             empty.classList.toggle('hidden', locations.length > 0);
+
+            const currentRow = document.createElement('li');
+            currentRow.className = 'location-row';
+
+            const currentSelect = document.createElement('button');
+            currentSelect.type = 'button';
+            currentSelect.className = 'location-select';
+            currentSelect.textContent =
+                `${CURRENT_LOCATION_NAME} — Latitude: ${formatCoordinate(currentLocation.latitude)}, `
+                + `Longitude: ${formatCoordinate(currentLocation.longitude)}`;
+            currentSelect.setAttribute(
+                'aria-pressed',
+                String(locationState?.selectedId === CURRENT_LOCATION_ID)
+            );
+            currentSelect.addEventListener('click', selectCurrentLocation);
+
+            currentRow.appendChild(currentSelect);
+            list.appendChild(currentRow);
 
             locations.forEach(location => {
                 const row = document.createElement('li');
@@ -1148,7 +1215,7 @@
 
                     const remaining = locationState.locations.filter(item => item.id !== location.id);
                     const nextSelectedId = locationState.selectedId === location.id
-                        ? (remaining[0]?.id ?? null)
+                        ? (remaining[0]?.id ?? CURRENT_LOCATION_ID)
                         : locationState.selectedId;
 
                     try {
@@ -1158,7 +1225,11 @@
                         });
                         clearLocationError();
                         resetLocationForm();
-                        updateForecast();
+                        if (locationState.selectedId === CURRENT_LOCATION_ID) {
+                            selectCurrentLocation();
+                        } else {
+                            updateForecast();
+                        }
                     } catch (error) {
                         showLocationError(error);
                     }
@@ -1167,27 +1238,78 @@
                 row.append(select, edit, remove);
                 list.appendChild(row);
             });
+
         }
 
-        function initializeLocations() {
+        async function initializeLocations() {
+            let storageError = null;
+
             try {
                 locationState = loadLocationState();
-                selectedLocation = locationState.locations.find(
+            } catch (error) {
+                storageError = error;
+                locationState = { locations: [], selectedId: CURRENT_LOCATION_ID };
+            }
+
+            currentLocation = {
+                id: CURRENT_LOCATION_ID,
+                name: CURRENT_LOCATION_NAME,
+                latitude: null,
+                longitude: null
+            };
+
+            selectedLocation = locationState.selectedId === CURRENT_LOCATION_ID
+                ? currentLocation
+                : locationState.locations.find(
                     location => location.id === locationState.selectedId
                 ) || null;
 
-                document.getElementById('subtitle-location').textContent =
-                    selectedLocation?.name || 'Add or select a location';
+            document.getElementById('subtitle-location').textContent =
+                selectedLocation?.name || 'Add or select a location';
 
-                renderLocationList();
-                setLocationManagerOpen(!selectedLocation);
+            renderLocationList();
+
+            if (locationState.selectedId !== CURRENT_LOCATION_ID) {
+                setLocationManagerOpen(false);
                 updateForecast();
+            }
+
+            let geolocationError = null;
+            try {
+                currentLocation = await requestCurrentLocation();
             } catch (error) {
-                locationState = { locations: [], selectedId: null };
-                selectedLocation = null;
-                renderLocationList();
-                setLocationManagerOpen(true);
-                showLocationError(error);
+                geolocationError = error;
+            }
+
+            selectedLocation = locationState.selectedId === CURRENT_LOCATION_ID
+                ? currentLocation
+                : locationState.locations.find(
+                    location => location.id === locationState.selectedId
+                ) || null;
+
+            document.getElementById('subtitle-location').textContent =
+                selectedLocation?.name || 'Add or select a location';
+
+            renderLocationList();
+
+            const currentSelected = locationState.selectedId === CURRENT_LOCATION_ID;
+            const currentUnavailable = currentSelected && !hasCoordinates(currentLocation);
+
+            if (currentSelected && !currentUnavailable) {
+                updateForecast();
+            } else if (currentUnavailable) {
+                document.getElementById('loading').classList.add('hidden');
+            }
+
+            const managerShouldOpen = Boolean(storageError) || currentUnavailable;
+            setLocationManagerOpen(managerShouldOpen);
+
+            if (storageError) {
+                showLocationError(storageError);
+            } else if (currentUnavailable) {
+                showLocationError(
+                    geolocationError || new Error('Current Location coordinates are unavailable.')
+                );
             }
         }
 
@@ -1241,6 +1363,43 @@
 
         document.getElementById('refresh-button').addEventListener('click', updateForecast);
         initializeLocations();
+
+        function hasCoordinates(location) {
+            return Number.isFinite(location?.latitude)
+                && Number.isFinite(location?.longitude);
+        }
+
+        function formatCoordinate(value) {
+            return Number.isFinite(value) ? value.toFixed(5) : 'Unavailable';
+        }
+
+        function requestCurrentLocation() {
+            if (!navigator.geolocation) {
+                return Promise.reject(new Error('This browser does not support location access.'));
+            }
+
+            return new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    ({ coords }) => {
+                        if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+                            reject(new Error('The browser returned invalid location coordinates.'));
+                            return;
+                        }
+
+                        resolve({
+                            id: CURRENT_LOCATION_ID,
+                            name: CURRENT_LOCATION_NAME,
+                            latitude: coords.latitude,
+                            longitude: coords.longitude
+                        });
+                    },
+                    error => reject(new Error(`Current Location unavailable: ${error.message}`)),
+                    { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 }
+                );
+            });
+        }
+
+
     </script>
 </body>
 </html>
