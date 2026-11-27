@@ -173,6 +173,21 @@
             stroke-width: 1;
         }
 
+        .chart .extreme-point {
+            fill: #ea580c;
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
+        .chart .point-label {
+            fill: #9a3412;
+            stroke: #e5e7eb;
+            stroke-width: 3px;
+            paint-order: stroke;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
         .credits {
             margin-top: 24px;
             padding-top: 16px;
@@ -403,7 +418,8 @@
                 (winds.length ? Math.max(...winds) : 5) / 5
             ) * 5);
 
-            const xFor = index => left + index / Math.max(1, count - 1) * plotWidth;
+            const xFor = index =>
+                left + Number(day.hours[index].time.slice(11, 13)) / 24 * plotWidth;
             const yForTemperature = value =>
                 top + (temperatureMax - value) / (temperatureMax - temperatureMin) * plotHeight;
             const yForWind = value => top + (windMax - value) / windMax * plotHeight;
@@ -486,14 +502,24 @@
                 }, 'Wind (mph)')
             );
 
-            [...new Set([0, 6, 12, 18, count - 1])].forEach(index => {
-                if (!day.hours[index]) return;
+            [0, 6, 12, 18].forEach(hour => {
+                const index = day.hours.findIndex(item =>
+                    Number(item.time.slice(11, 13)) === hour
+                );
+                if (index === -1) return;
+
                 chart.appendChild(svgElement('text', {
-                    x: xFor(index),
+                    x: left + hour / 24 * plotWidth,
                     y: height - 14,
-                    'text-anchor': index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle'
+                    'text-anchor': hour === 0 ? 'start' : 'middle'
                 }, formatClock(day.hours[index].time)));
             });
+
+            chart.appendChild(svgElement('text', {
+                x: width - right,
+                y: height - 14,
+                'text-anchor': 'end'
+            }, '12 AM'));
 
             chart.append(
                 svgElement('path', {
@@ -513,6 +539,167 @@
                     'stroke-linejoin': 'round'
                 })
             );
+
+            const getMinuteOfDay = dateTime => {
+                const clock = dateTime?.split('T')[1];
+                if (!clock) return NaN;
+
+                const [hour, minute] = clock.split(':').map(Number);
+                return Number.isFinite(hour) && Number.isFinite(minute)
+                    ? hour * 60 + minute
+                    : NaN;
+            };
+
+            const sunriseMinute = getMinuteOfDay(day.sunrise);
+            const sunsetMinute = getMinuteOfDay(day.sunset);
+
+            if (Number.isFinite(sunriseMinute) && Number.isFinite(sunsetMinute)) {
+                const shadeColor = '#64748b';
+                const shadeOpacity = '0.42';
+                const xAtMinute = minute =>
+                    left + Math.max(0, Math.min(1440, minute)) / 1440 * plotWidth;
+                const dawnStart = Math.max(0, sunriseMinute - 30);
+                const duskStart = Math.max(0, sunsetMinute - 30);
+                const dawnId = `dawn-${day.date}`;
+                const duskId = `dusk-${day.date}`;
+
+                const dawnGradient = svgElement('linearGradient', {
+                    id: dawnId,
+                    gradientUnits: 'userSpaceOnUse',
+                    x1: xAtMinute(dawnStart),
+                    y1: top,
+                    x2: xAtMinute(sunriseMinute),
+                    y2: top
+                });
+                dawnGradient.append(
+                    svgElement('stop', {
+                        offset: '0%',
+                        'stop-color': shadeColor,
+                        'stop-opacity': shadeOpacity
+                    }),
+                    svgElement('stop', {
+                        offset: '100%',
+                        'stop-color': shadeColor,
+                        'stop-opacity': '0'
+                    })
+                );
+
+                const duskGradient = svgElement('linearGradient', {
+                    id: duskId,
+                    gradientUnits: 'userSpaceOnUse',
+                    x1: xAtMinute(duskStart),
+                    y1: top,
+                    x2: xAtMinute(sunsetMinute),
+                    y2: top
+                });
+                duskGradient.append(
+                    svgElement('stop', {
+                        offset: '0%',
+                        'stop-color': shadeColor,
+                        'stop-opacity': '0'
+                    }),
+                    svgElement('stop', {
+                        offset: '100%',
+                        'stop-color': shadeColor,
+                        'stop-opacity': shadeOpacity
+                    })
+                );
+
+                const definitions = svgElement('defs');
+                definitions.append(dawnGradient, duskGradient);
+                chart.appendChild(definitions);
+
+                if (dawnStart > 0) {
+                    chart.appendChild(svgElement('rect', {
+                        x: left,
+                        y: top,
+                        width: xAtMinute(dawnStart) - left,
+                        height: plotHeight,
+                        fill: shadeColor,
+                        opacity: shadeOpacity
+                    }));
+                }
+
+                if (sunriseMinute > dawnStart) {
+                    chart.appendChild(svgElement('rect', {
+                        x: xAtMinute(dawnStart),
+                        y: top,
+                        width: xAtMinute(sunriseMinute) - xAtMinute(dawnStart),
+                        height: plotHeight,
+                        fill: `url(#${dawnId})`
+                    }));
+                }
+
+                if (sunsetMinute > duskStart) {
+                    chart.appendChild(svgElement('rect', {
+                        x: xAtMinute(duskStart),
+                        y: top,
+                        width: xAtMinute(sunsetMinute) - xAtMinute(duskStart),
+                        height: plotHeight,
+                        fill: `url(#${duskId})`
+                    }));
+                }
+
+                if (sunsetMinute < 1440) {
+                    chart.appendChild(svgElement('rect', {
+                        x: xAtMinute(sunsetMinute),
+                        y: top,
+                        width: left + plotWidth - xAtMinute(sunsetMinute),
+                        height: plotHeight,
+                        fill: shadeColor,
+                        opacity: shadeOpacity
+                    }));
+                }
+            }
+
+            const daylightTemperatures = day.hours
+                .map((hour, index) => ({
+                    index,
+                    time: getMinuteOfDay(hour.time),
+                    temperature: hour.temperature
+                }))
+                .filter(point =>
+                    Number.isFinite(point.temperature)
+                    && Number.isFinite(point.time)
+                    && point.time >= sunriseMinute
+                    && point.time <= sunsetMinute
+                );
+
+            if (daylightTemperatures.length) {
+                const high = daylightTemperatures.reduce((best, point) =>
+                    point.temperature > best.temperature ? point : best
+                );
+                const low = daylightTemperatures.reduce((best, point) =>
+                    point.temperature < best.temperature ? point : best
+                );
+                const samePoint = high.index === low.index;
+
+                [
+                    { label: 'H', point: high },
+                    { label: 'L', point: low }
+                ].forEach(({ label, point }) => {
+                    const x = xFor(point.index);
+                    const y = yForTemperature(point.temperature);
+                    const offsetX = samePoint ? (label === 'H' ? 18 : -18) : 0;
+
+                    chart.append(
+                        svgElement('circle', {
+                            class: 'extreme-point',
+                            cx: x,
+                            cy: y,
+                            r: 4
+                        }),
+                        svgElement('text', {
+                            class: 'point-label',
+                            x: x + offsetX,
+                            y: Math.max(top + 14, y - 10),
+                            'text-anchor': samePoint
+                                ? (label === 'H' ? 'start' : 'end')
+                                : 'middle'
+                        }, `${label} ${Math.round(point.temperature)}°`)
+                    );
+                });
+            }
 
             return chart;
         }
