@@ -38,6 +38,20 @@
             color: #cbd5e1;
         }
 
+        .subtitle-action {
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+
+        .subtitle-action:hover {
+            color: #f8fafc;
+        }
+
         #loading {
             padding: 48px 0;
             color: #cbd5e1;
@@ -227,6 +241,90 @@
             border-top: 1px dashed #64748b;
         }
 
+        .location-manager {
+            margin-bottom: 24px;
+            padding: 18px;
+            border: 1px solid #f1f5f9;
+            border-radius: 16px;
+            background: #e5e7eb;
+            color: #0f172a;
+        }
+
+        .location-manager h2,
+        .location-manager h3 {
+            margin: 0 0 12px;
+        }
+
+        .location-list {
+            display: grid;
+            gap: 8px;
+            margin: 0 0 20px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .location-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #f8fafc;
+        }
+
+        .location-select {
+            flex: 1 1 220px;
+            text-align: left;
+        }
+
+        .location-select[aria-pressed="true"] {
+            border-color: #0369a1;
+            background: #e0f2fe;
+        }
+
+        .location-form {
+            display: grid;
+            gap: 12px;
+            max-width: 32rem;
+        }
+
+        .location-form label {
+            display: grid;
+            gap: 4px;
+            color: #334155;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .location-form input {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid #94a3b8;
+            border-radius: 8px;
+            background: #fff;
+            color: #0f172a;
+            font: inherit;
+        }
+
+        .location-form input:focus-visible {
+            outline: 3px solid #38bdf8;
+            outline-offset: 1px;
+        }
+
+        .location-form-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .location-message {
+            margin: 0 0 12px;
+            color: #991b1b;
+            font-size: 0.875rem;
+        }
+
         @media (max-width: 480px) {
             header { margin-bottom: 24px; }
             h1 { font-size: 1.3rem; }
@@ -240,6 +338,8 @@
             }
             .chart text { font-size: 12px; }
             .chart .axis-title { font-size: 11px; }
+            .location-manager { padding: 14px; }
+            .location-row { align-items: stretch; }
         }
     </style>
 </head>
@@ -247,50 +347,106 @@
     <main class="max-w">
         <header>
             <h1>My Weather Dashboard</h1>
-            <p class="subtitle">2551 Bellamy Dr SW, Supply, NC · 7-day hourly forecast</p>
+            <p class="subtitle">
+                <button
+                    id="location-toggle"
+                    class="subtitle-action"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="location-manager">
+                    <span id="subtitle-location"></span>
+                </button>
+                · 7-day hourly forecast
+            </p>
         </header>
 
-        <div id="loading" role="status">Fetching the latest forecast...</div>
-        <div id="error" class="hidden" role="alert">
-            <span id="error-message"></span>
-            <button id="refresh-button" type="button">Retry</button>
+        <section id="location-manager" class="location-manager hidden" aria-labelledby="locations-heading">
+            <h2 id="locations-heading">Manage locations</h2>
+            <p id="location-error" class="location-message hidden" role="alert"></p>
+            <p id="location-empty" class="hidden">No locations saved. Add one below.</p>
+            <ul id="location-list" class="location-list"></ul>
+
+            <h3 id="location-form-heading">Add a location</h3>
+            <form id="location-form" class="location-form">
+                <input id="location-edit-id" type="hidden">
+
+                <label>
+                    Name
+                    <input id="location-name" type="text" maxlength="80" required>
+                </label>
+                <label>
+                    Latitude
+                    <input id="location-latitude" type="number" min="-90" max="90" step="any" required>
+                </label>
+                <label>
+                    Longitude
+                    <input id="location-longitude" type="number" min="-180" max="180" step="any" required>
+                </label>
+
+                <div class="location-form-actions">
+                    <button id="location-save" type="submit">Add location</button>
+                    <button id="location-cancel" type="button">Clear form</button>
+                    <button id="location-done" type="button">Done</button>
+                </div>
+            </form>
+        </section>
+
+        <div id="dashboard-content">
+            <div id="loading" role="status">Fetching the latest forecast...</div>
+            <div id="error" class="hidden" role="alert">
+                <span id="error-message"></span>
+                <button id="refresh-button" type="button">Retry</button>
+            </div>
+            <section id="forecast" class="forecast" aria-label="Seven-day weather forecast"></section>
+
+
+            <footer id="credits" class="credits hidden">
+                <section class="credit-section" aria-labelledby="retrieval-heading">
+                    <h2 id="retrieval-heading" class="credit-heading">Data retrieval</h2>
+                    <p>Data retrieved at <time id="retrieved-at"></time> Eastern Time.</p>
+                </section>
+                <section class="credit-section" aria-labelledby="sources-heading">
+                    <h2 id="sources-heading" class="credit-heading">Data sources</h2>
+                    <ul>
+                        <li>
+                            <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo forecast API</a>
+                            — hourly weather and sunrise/sunset times.
+                        </li>
+                        <li>
+                            <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Open-Meteo terms</a>
+                            — data and attribution information.
+                        </li>
+                    </ul>
+                    <p class="source-notice">
+                        Weather information is reformatted for display and is not an official government forecast.
+                    </p>
+                </section>
+            </footer>
         </div>
-        <section id="forecast" class="forecast" aria-label="Seven-day weather forecast"></section>
-
-        <footer id="credits" class="credits hidden">
-            <section class="credit-section" aria-labelledby="retrieval-heading">
-                <h2 id="retrieval-heading" class="credit-heading">Data retrieval</h2>
-                <p>Data retrieved at <time id="retrieved-at"></time> Eastern Time.</p>
-            </section>
-            <section class="credit-section" aria-labelledby="sources-heading">
-                <h2 id="sources-heading" class="credit-heading">Data sources</h2>
-                <ul>
-                    <li>
-                        <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo forecast API</a>
-                        — hourly weather and sunrise/sunset times.
-                    </li>
-                    <li>
-                        <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Open-Meteo terms</a>
-                        — data and attribution information.
-                    </li>
-                </ul>
-                <p class="source-notice">
-                    Weather information is reformatted for display and is not an official government forecast.
-                </p>
-            </section>
-        </footer>
     </main>
-
     <script>
-        const LATITUDE = 33.9233;
-        const LONGITUDE = -78.3070;
         const TIME_ZONE = 'America/New_York';
         const SVG_NS = 'http://www.w3.org/2000/svg';
 
-        async function fetchForecast() {
+        const LOCATION_STORAGE_KEY = 'my-weather-locations-v1';
+        const DEFAULT_LOCATION = {
+            id: 'default-supply',
+            name: '2551 Bellamy Dr SW, Supply, NC',
+            latitude: 33.9233,
+            longitude: -78.3070
+        };
+
+        let locationState = null;
+        let selectedLocation = null;
+        let forecastRequestId = 0;
+
+        async function fetchForecast(location) {
+            if (!location) {
+                throw new Error('Select or add a location to view its forecast.');
+            }
             const params = new URLSearchParams({
-                latitude: LATITUDE,
-                longitude: LONGITUDE,
+                latitude: location.latitude,
+                longitude: location.longitude,
                 hourly: 'temperature_2m,wind_speed_10m,precipitation_probability',
                 daily: 'sunrise,sunset',
                 temperature_unit: 'fahrenheit',
@@ -734,6 +890,8 @@
         }
 
         async function updateForecast() {
+            const requestId = ++forecastRequestId;
+            const location = selectedLocation;
             hideError();
             hideCredits();
             document.getElementById('loading').classList.remove('hidden');
@@ -741,8 +899,15 @@
             const forecast = document.getElementById('forecast');
             forecast.replaceChildren();
 
+            if (!location) {
+                document.getElementById('loading').classList.add('hidden');
+                return;
+            }
+
             try {
-                const data = await fetchForecast();
+                const data = await fetchForecast(location);
+                if (requestId !== forecastRequestId) return;
+
                 const days = Object.fromEntries(data.daily.time.map((date, index) => [
                     date,
                     {
@@ -819,18 +984,263 @@
                 document.getElementById('loading').classList.add('hidden');
                 showCredits();
             } catch (error) {
+                if (requestId !== forecastRequestId) return;
                 document.getElementById('loading').classList.add('hidden');
                 showError(error instanceof Error ? error.message : String(error));
                 console.error(error);
             }
         }
 
-        document.getElementById('refresh-button').addEventListener('click', () => {
-            hideError();
-            updateForecast();
+        function validateLocationState(value) {
+            if (!value || !Array.isArray(value.locations)
+                || !(value.selectedId === null || typeof value.selectedId === 'string')) {
+                throw new Error('Saved location data is invalid.');
+            }
+
+            const ids = new Set();
+            const locations = value.locations.map(location => {
+                if (!location || typeof location.id !== 'string' || !location.id
+                    || typeof location.name !== 'string' || !location.name.trim()
+                    || !Number.isFinite(location.latitude)
+                    || location.latitude < -90 || location.latitude > 90
+                    || !Number.isFinite(location.longitude)
+                    || location.longitude < -180 || location.longitude > 180
+                    || ids.has(location.id)) {
+                    throw new Error('Saved location data is invalid.');
+                }
+                ids.add(location.id);
+
+                return {
+                    id: location.id,
+                    name: location.name.trim(),
+                    latitude: location.latitude,
+                    longitude: location.longitude
+                };
+            });
+
+            if (value.selectedId !== null && !ids.has(value.selectedId)) {
+                throw new Error('The saved selected location does not exist.');
+            }
+
+            return { locations, selectedId: value.selectedId };
+        }
+
+        function loadLocationState() {
+            const saved = localStorage.getItem(LOCATION_STORAGE_KEY);
+            if (saved === null) {
+                const initial = {
+                    locations: [{ ...DEFAULT_LOCATION }],
+                    selectedId: DEFAULT_LOCATION.id
+                };
+                localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(initial));
+                return initial;
+            }
+
+            let parsed;
+            try {
+                parsed = JSON.parse(saved);
+            } catch {
+                throw new Error('Saved locations could not be read from local storage.');
+            }
+
+            return validateLocationState(parsed);
+        }
+
+        function persistLocationState(nextState) {
+            const validated = validateLocationState(nextState);
+            localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(validated));
+            locationState = validated;
+            selectedLocation = validated.locations.find(
+                location => location.id === validated.selectedId
+            ) || null;
+
+            document.getElementById('subtitle-location').textContent =
+                selectedLocation?.name || 'Add or select a location';
+
+            renderLocationList();
+        }
+
+        function showLocationError(error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const element = document.getElementById('location-error');
+            element.textContent = message;
+            element.classList.remove('hidden');
+            console.error(error);
+        }
+
+        function clearLocationError() {
+            const element = document.getElementById('location-error');
+            element.textContent = '';
+            element.classList.add('hidden');
+        }
+
+        function setLocationManagerOpen(open) {
+            if (open && locationState) {
+                renderLocationList();
+            }
+            if (!open && !selectedLocation) {
+                open = true;
+            }
+
+            document.getElementById('location-manager').classList.toggle('hidden', !open);
+            document.getElementById('dashboard-content').classList.toggle('hidden', open);
+            document.getElementById('location-toggle').setAttribute('aria-expanded', String(open));
+        }
+
+        function resetLocationForm() {
+            document.getElementById('location-form').reset();
+            document.getElementById('location-edit-id').value = '';
+            document.getElementById('location-form-heading').textContent = 'Add a location';
+            document.getElementById('location-save').textContent = 'Add location';
+        }
+
+        function renderLocationList() {
+            const list = document.getElementById('location-list');
+            const empty = document.getElementById('location-empty');
+            list.replaceChildren();
+
+            const locations = locationState?.locations || [];
+            empty.classList.toggle('hidden', locations.length > 0);
+
+            locations.forEach(location => {
+                const row = document.createElement('li');
+                row.className = 'location-row';
+
+                const select = document.createElement('button');
+                select.type = 'button';
+                select.className = 'location-select';
+                select.textContent = `${location.name} (${location.latitude}, ${location.longitude})`;
+                select.setAttribute('aria-pressed', String(location.id === selectedLocation?.id));
+                select.addEventListener('click', () => {
+                    try {
+                        persistLocationState({
+                            ...locationState,
+                            selectedId: location.id
+                        });
+                        clearLocationError();
+                        setLocationManagerOpen(false);
+                        updateForecast();
+                    } catch (error) {
+                        showLocationError(error);
+                    }
+                });
+
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.textContent = 'Edit';
+                edit.setAttribute('aria-label', `Edit ${location.name}`);
+                edit.addEventListener('click', () => {
+                    document.getElementById('location-edit-id').value = location.id;
+                    document.getElementById('location-name').value = location.name;
+                    document.getElementById('location-latitude').value = location.latitude;
+                    document.getElementById('location-longitude').value = location.longitude;
+                    document.getElementById('location-form-heading').textContent = `Edit ${location.name}`;
+                    document.getElementById('location-save').textContent = 'Save changes';
+                    document.getElementById('location-name').focus();
+                });
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.textContent = 'Delete';
+                remove.setAttribute('aria-label', `Delete ${location.name}`);
+                remove.addEventListener('click', () => {
+                    if (!window.confirm(`Delete "${location.name}"?`)) return;
+
+                    const remaining = locationState.locations.filter(item => item.id !== location.id);
+                    const nextSelectedId = locationState.selectedId === location.id
+                        ? (remaining[0]?.id ?? null)
+                        : locationState.selectedId;
+
+                    try {
+                        persistLocationState({
+                            locations: remaining,
+                            selectedId: nextSelectedId
+                        });
+                        clearLocationError();
+                        resetLocationForm();
+                        updateForecast();
+                    } catch (error) {
+                        showLocationError(error);
+                    }
+                });
+
+                row.append(select, edit, remove);
+                list.appendChild(row);
+            });
+        }
+
+        function initializeLocations() {
+            try {
+                locationState = loadLocationState();
+                selectedLocation = locationState.locations.find(
+                    location => location.id === locationState.selectedId
+                ) || null;
+
+                document.getElementById('subtitle-location').textContent =
+                    selectedLocation?.name || 'Add or select a location';
+
+                renderLocationList();
+                setLocationManagerOpen(!selectedLocation);
+                updateForecast();
+            } catch (error) {
+                locationState = { locations: [], selectedId: null };
+                selectedLocation = null;
+                renderLocationList();
+                setLocationManagerOpen(true);
+                showLocationError(error);
+            }
+        }
+
+        document.getElementById('location-toggle').addEventListener('click', () => {
+            const manager = document.getElementById('location-manager');
+            setLocationManagerOpen(manager.classList.contains('hidden'));
         });
 
-        updateForecast();
+        document.getElementById('location-done').addEventListener('click', () => {
+            setLocationManagerOpen(false);
+        });
+
+        document.getElementById('location-cancel').addEventListener('click', resetLocationForm);
+
+        document.getElementById('location-form').addEventListener('submit', event => {
+            event.preventDefault();
+            clearLocationError();
+
+            const editId = document.getElementById('location-edit-id').value;
+            const name = document.getElementById('location-name').value.trim();
+            const latitude = Number(document.getElementById('location-latitude').value);
+            const longitude = Number(document.getElementById('location-longitude').value);
+
+            if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+                || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+                showLocationError(new Error('Enter a name, latitude from -90 to 90, and longitude from -180 to 180.'));
+                return;
+            }
+
+            const id = editId || `location-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const updatedLocation = { id, name, latitude, longitude };
+            const exists = locationState.locations.some(location => location.id === id);
+            const locations = exists
+                ? locationState.locations.map(location => location.id === id ? updatedLocation : location)
+                : [...locationState.locations, updatedLocation];
+
+            try {
+                persistLocationState({
+                    locations,
+                    selectedId: exists ? locationState.selectedId : id
+                });
+                resetLocationForm();
+
+                if (!exists || locationState.selectedId === id) {
+                    updateForecast();
+                }
+            } catch (error) {
+                showLocationError(error);
+            }
+        });
+
+        document.getElementById('refresh-button').addEventListener('click', updateForecast);
+        initializeLocations();
     </script>
 </body>
 </html>
