@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Weather Dashboard</title>
+    <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="anonymous">
     <style>
         *, *::before, *::after {
             box-sizing: border-box;
@@ -325,6 +330,35 @@
             font-size: 0.875rem;
         }
 
+        .map-panel {
+            margin-bottom: 24px;
+            padding: 18px;
+            border: 1px solid #f1f5f9;
+            border-radius: 16px;
+            background: #e5e7eb;
+            color: #0f172a;
+        }
+
+        .map-panel h2 {
+            margin: 0 0 8px;
+            font-size: 1.125rem;
+        }
+
+        .map-panel p {
+            margin: 0 0 12px;
+            color: #475569;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        #location-map {
+            width: 100%;
+            height: 420px;
+            min-height: 300px;
+            border-radius: 10px;
+            background: #cbd5e1;
+        }
+
         @media (max-width: 480px) {
             header { margin-bottom: 24px; }
             h1 { font-size: 1.3rem; }
@@ -366,6 +400,14 @@
             <p id="location-empty" class="hidden">No locations saved. Add one below.</p>
             <ul id="location-list" class="location-list"></ul>
 
+            <button
+                id="map-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="map-panel">
+                Show map view
+            </button>
+
             <h3 id="location-form-heading">Add a location</h3>
             <form id="location-form" class="location-form">
                 <input id="location-edit-id" type="hidden">
@@ -389,6 +431,16 @@
                     <button id="location-done" type="button">Done</button>
                 </div>
             </form>
+        </section>
+
+        <section id="map-panel" class="map-panel hidden" aria-labelledby="map-heading">
+            <h2 id="map-heading">Choose a location on the map</h2>
+            <p>
+                Double-click or double-tap a point to fill the location fields.
+                If Name is blank, a nearby address will be looked up using Nominatim.
+                The selected coordinates are sent to that service.
+            </p>
+            <div id="location-map" role="region" aria-label="Interactive location map"></div>
         </section>
 
         <div id="dashboard-content">
@@ -416,6 +468,24 @@
                             <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Open-Meteo terms</a>
                             — data and attribution information.
                         </li>
+                        <li>
+                            <a href="https://leafletjs.com/" target="_blank" rel="noopener noreferrer">Leaflet</a>
+                            — interactive map library.
+                        </li>
+                        <li>
+                            Map tiles and geographic data:
+                            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
+                                © OpenStreetMap contributors
+                            </a>
+                            (ODbL).
+                        </li>
+                        <li>
+                            Address lookup:
+                            <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer">Nominatim</a>.
+                            See the <a href="https://operations.osmfoundation.org/policies/nominatim/" target="_blank" rel="noopener noreferrer">
+                                Nominatim usage policy
+                            </a>.
+                        </li>
                     </ul>
                     <p class="source-notice">
                         Weather information is reformatted for display and is not an official government forecast.
@@ -424,6 +494,11 @@
             </footer>
         </div>
     </main>
+    <script
+        src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin="anonymous">
+    </script>
     <script>
         const TIME_ZONE = 'America/New_York';
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -431,13 +506,6 @@
         const LOCATION_STORAGE_KEY = 'my-weather-locations-v1';
         const CURRENT_LOCATION_ID = 'current-location';
         const CURRENT_LOCATION_NAME = 'Current Location';
-
-        const LEGACY_DEFAULT_LOCATION = {
-            id: 'default-supply',
-            name: '2551 Bellamy Dr SW, Supply, NC',
-            latitude: 33.9233,
-            longitude: -78.3070
-        };
 
         let currentLocation = {
             id: CURRENT_LOCATION_ID,
@@ -449,6 +517,217 @@
         let selectedLocation = null;
         let forecastRequestId = 0;
 
+        let locationMap = null;
+        let mapMarker = null;
+        let lastMapPoint = null;
+        let lastTouchTap = null;
+        let mapSelectionVersion = 0;
+        let nextNominatimRequestAt = 0;
+        let nominatimQueue = Promise.resolve();
+        const reverseGeocodeCache = new Map();
+
+        function centerMapOnLocation(location) {
+            if (!locationMap) return;
+
+            if (hasCoordinates(location)) {
+                const center = [location.latitude, location.longitude];
+                locationMap.setView(center, Math.max(locationMap.getZoom(), 13));
+
+                if (mapMarker) {
+                    mapMarker.setLatLng(center);
+                } else {
+                    mapMarker = L.marker(center).addTo(locationMap);
+                }
+                return;
+            }
+
+            locationMap.setView([0, 0], 2);
+            if (mapMarker) {
+                locationMap.removeLayer(mapMarker);
+                mapMarker = null;
+            }
+        }
+
+        function centerMapOnSelectedLocation() {
+            centerMapOnLocation(selectedLocation);
+        }
+
+        function reverseGeocode(latitude, longitude) {
+            const key = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+            if (reverseGeocodeCache.has(key)) {
+                return Promise.resolve(reverseGeocodeCache.get(key));
+            }
+
+            const request = nominatimQueue.then(async () => {
+                const wait = Math.max(0, nextNominatimRequestAt - Date.now());
+                if (wait > 0) {
+                    await new Promise(resolve => setTimeout(resolve, wait));
+                }
+                nextNominatimRequestAt = Date.now() + 1000;
+
+                const params = new URLSearchParams({
+                    format: 'jsonv2',
+                    lat: latitude,
+                    lon: longitude,
+                    zoom: '18',
+                    addressdetails: '1'
+                });
+
+                let response;
+                try {
+                    response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?${params}`
+                    );
+                } catch (error) {
+                    throw new Error(`Nominatim request failed: ${error.message || String(error)}`);
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Nominatim request failed (${response.status}).`);
+                }
+
+                let result;
+                try {
+                    result = await response.json();
+                } catch {
+                    throw new Error('Nominatim returned a response that could not be read.');
+                }
+
+                const name = result.name || result.display_name;
+                if (typeof name !== 'string' || !name.trim()) {
+                    throw new Error('Nominatim did not find a name for this point.');
+                }
+
+                reverseGeocodeCache.set(key, name.trim());
+                return name.trim();
+            });
+
+            nominatimQueue = request.catch(() => {});
+            return request;
+        }
+
+        async function populateLocationFromMap(latlng) {
+            const now = Date.now();
+            if (lastMapPoint
+                && now - lastMapPoint.time < 500
+                && Math.abs(lastMapPoint.latitude - latlng.lat) < 0.00001
+                && Math.abs(lastMapPoint.longitude - latlng.lng) < 0.00001) {
+                return;
+            }
+
+            lastMapPoint = {
+                time: now,
+                latitude: latlng.lat,
+                longitude: latlng.lng
+            };
+
+            const latitude = Number(latlng.lat.toFixed(5));
+            const longitude = Number(latlng.lng.toFixed(5));
+            const latitudeInput = document.getElementById('location-latitude');
+            const longitudeInput = document.getElementById('location-longitude');
+            const nameInput = document.getElementById('location-name');
+
+            latitudeInput.value = latitude.toFixed(5);
+            longitudeInput.value = longitude.toFixed(5);
+
+            if (mapMarker) {
+                mapMarker.setLatLng(latlng);
+            } else {
+                mapMarker = L.marker(latlng).addTo(locationMap);
+            }
+
+            if (nameInput.value.trim()) return;
+
+            const coordinateName = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+            nameInput.value = coordinateName;
+            const selectionVersion = ++mapSelectionVersion;
+
+            try {
+                const name = await reverseGeocode(latitude, longitude);
+                if (selectionVersion === mapSelectionVersion
+                    && nameInput.value === coordinateName) {
+                    nameInput.value = name.slice(0, nameInput.maxLength || 80);
+                }
+            } catch (error) {
+                if (selectionVersion === mapSelectionVersion) {
+                    showLocationError(error);
+                }
+            }
+        }
+
+        function setMapViewVisible(visible, centerLocation = selectedLocation) {
+            const panel = document.getElementById('map-panel');
+            const toggle = document.getElementById('map-toggle');
+
+            panel.classList.toggle('hidden', !visible);
+            toggle.textContent = visible ? 'Hide map view' : 'Show map view';
+            toggle.setAttribute('aria-expanded', String(visible));
+
+            if (!visible) return;
+
+            if (!window.L) {
+                panel.classList.add('hidden');
+                toggle.textContent = 'Show map view';
+                toggle.setAttribute('aria-expanded', 'false');
+                showLocationError(new Error('The Leaflet map library could not be loaded.'));
+                return;
+            }
+
+            if (!locationMap) {
+                const hasSelectedCoordinates = hasCoordinates(centerLocation);
+                const center = hasSelectedCoordinates
+                    ? [centerLocation.latitude, centerLocation.longitude]
+                    : [0, 0];
+                const zoom = hasSelectedCoordinates ? 13 : 2;
+
+                locationMap = L.map('location-map').setView(center, zoom);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+                }).addTo(locationMap);
+
+                locationMap.on('dblclick', event => {
+                    populateLocationFromMap(event.latlng);
+                });
+
+                locationMap.getContainer().addEventListener('touchend', event => {
+                    if (event.changedTouches.length !== 1) {
+                        lastTouchTap = null;
+                        return;
+                    }
+
+                    const touch = event.changedTouches[0];
+                    const time = Date.now();
+
+                    if (lastTouchTap
+                        && time - lastTouchTap.time < 350
+                        && Math.hypot(touch.clientX - lastTouchTap.x, touch.clientY - lastTouchTap.y) < 30) {
+                        const bounds = locationMap.getContainer().getBoundingClientRect();
+                        const point = L.point(
+                            touch.clientX - bounds.left,
+                            touch.clientY - bounds.top
+                        );
+                        populateLocationFromMap(locationMap.containerPointToLatLng(point));
+                        lastTouchTap = null;
+                    } else {
+                        lastTouchTap = { x: touch.clientX, y: touch.clientY, time };
+                    }
+                }, { passive: true });
+            } else {
+                centerMapOnLocation(centerLocation);
+            }
+
+            requestAnimationFrame(() => {
+                locationMap.invalidateSize();
+                centerMapOnLocation(centerLocation);
+            });
+        }
+
+        document.getElementById('map-toggle').addEventListener('click', () => {
+            const panel = document.getElementById('map-panel');
+            setMapViewVisible(panel.classList.contains('hidden'));
+        });
+ 
         async function fetchForecast(location) {
             if (!hasCoordinates(location)) {
                 throw new Error('The selected location does not have valid coordinates.');
@@ -1055,25 +1334,7 @@
                 throw new Error('Saved locations could not be read from local storage.');
             }
 
-            const state = validateLocationState(parsed);
-            const legacyDefault = state.locations.find(location =>
-                location.id === LEGACY_DEFAULT_LOCATION.id
-                && location.name === LEGACY_DEFAULT_LOCATION.name
-                && location.latitude === LEGACY_DEFAULT_LOCATION.latitude
-                && location.longitude === LEGACY_DEFAULT_LOCATION.longitude
-            );
-
-            if (!legacyDefault) return state;
-
-            const migrated = {
-                locations: state.locations.filter(location => location.id !== legacyDefault.id),
-                selectedId: state.selectedId === legacyDefault.id
-                    ? CURRENT_LOCATION_ID
-                    : state.selectedId
-            };
-            const validated = validateLocationState(migrated);
-            localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(validated));
-            return validated;
+            return validateLocationState(parsed);
         }
 
         function persistLocationState(nextState) {
@@ -1084,6 +1345,7 @@
                 ? currentLocation
                 : validated.locations.find(location => location.id === validated.selectedId) || null;
 
+            centerMapOnSelectedLocation();
             document.getElementById('subtitle-location').textContent =
                 selectedLocation?.name || 'Add or select a location';
 
@@ -1111,7 +1373,7 @@
             if (!open && (!selectedLocation || !hasCoordinates(selectedLocation))) {
                 open = true;
             }
-
+            if (!open) setMapViewVisible(false);
             document.getElementById('location-manager').classList.toggle('hidden', !open);
             document.getElementById('dashboard-content').classList.toggle('hidden', open);
             document.getElementById('location-toggle').setAttribute('aria-expanded', String(open));
@@ -1203,6 +1465,7 @@
                     document.getElementById('location-longitude').value = location.longitude;
                     document.getElementById('location-form-heading').textContent = `Edit ${location.name}`;
                     document.getElementById('location-save').textContent = 'Save changes';
+                    setMapViewVisible(true, location);
                     document.getElementById('location-name').focus();
                 });
 
